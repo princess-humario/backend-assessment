@@ -1,89 +1,121 @@
-# **Ventnurenox** Associate Backend Engineer Hiring Test
+# Kafka Integration Hiring Task
 
-## Overview:
-The aim of this assessment is to evaluate your backend skills using NodeJS and by adopting a microservice architecture. The assessment will primarily be a web app where you'll be exposing API endpoints, interacting with Database via ORM, producing and consuming event via Kafka.
+## Task Overview
+You are required to integrate Kafka into a TodoList application and set up a Notification Service. The TodoList APIs are already built, and your job is to:
 
+1. Publish a Kafka event whenever a task is **created**, **updated**, or **deleted**.
+2. Develop a Notification Service that:
+   - Consumes these Kafka messages.
+   - Generates appropriate notifications.
+   - Provides an API to retrieve notifications.
 
-## Suggested Techstack:
-- ### NodeJS
-- ### ExpressJS (web server)
-- ### Objection JS (ORM)
-- ### KnexJS (Query Builder)
-- ### KafkaJS
-*Note: you may use whichever ORM or Qerybuilder you arer comfortable with.*
+## Requirements 
+- Set up **Kafka producer** in the TodoList application to publish task events.
+- Develop a **Kafka consumer** in the Notification Service to consume these events.
+- Implement a **notification storage mechanism** (in-memory database, SQLite, or any lightweight database).
+- Build a **notifications API** to allow users to fetch notifications.
+- Provide a clear README explaining setup and execution.
 
-## Assissting Technology (provided in the starter code)
-- ### Docker Compose file for orchestrating multiple services
-- ### Postgres
-- ### Adminer
-- ### Kafka
+## Tech Stack
+- Backend: **Node.js (Express.js)**
+- Kafka: **Apache Kafka**
+- Database: **SQLite/PostgreSQL/MongoDB (optional)**
 
-
-## **Assessment**:
-
-For this assessment you will be using the following ERD. The following have 2 major tables having a single one to many relationship between them.
-
-<img src="test_erd.png" width=75%>
-
-## **Task 0**: Running the repo
-The repo has been created in a microservice fashion using docker and docker compose. In order to run the whole repo use the following command to run all the services/containers:
-
-```docker-compose up -d --build```
-
-To stop all containers use the following command:
-
-```docker-compose down```
-
-To run a specific microservice:
-
-```docker-compose up -d --build <servicename>```
-
-*Note: For every change that you make in the code, in order to rerflect those you need to re-run the container using the first command given in this section.*
-
-If you dont have docker and docker-compose setup in your system consult the following:
-
-**For Debain based linux distros:**
-
-Install docker and docker-compose using the following command in terminal:
-
-```sudo apt install docker docker-compose```
-
-**For windows systems:**
-
-Install docker desktop.
-
-**For other OS:**
-
-Consult the installation guide relevant to your system on the Docker offical website.
-
-## **```NOTE:``` A service named ```social``` has already been setup with kafka for you to work in. Start working in *```./backend/social/```***
-
-
-## **Task 1**: Checking the Sample web server code
-Study the starter code for the web service provided. In which a sample web server has been created for you with a sample router/endpoint in it. You are to run the endpoint successfully via browser or Postman to check if you able to run the web app successfully.
-
-
-## **Task 2**: Creating the database using ORM/Query builder
-Using the ERD provided above create the database using an ORM/Query builder. Throughout this assessment you are required to use only the ORM/Query builder to interact with the database and the tables inside of it. Add this code to the web server started code provided.
-
-## ```Postgres Credentials```
-Postgres credentials are provided via enviornment variables.
+## Project Structure
 ```
-- host:- process.env.POSTGRES_HOST
-- username:- process.env.POSTGRES_USERNAME
-- password:- process.env.POSTGRES_PASSWORD
-- database:- process.env.POSTGRES_DATABASE 
+/kafka-todo-app
+│── /todolist-service
+│   ├── producer.js  (Kafka producer setup)
+│   ├── app.js       (Main application logic)
+│── /notification-service
+│── docker-compose.yml (Kafka setup)
+│── README.md
 ```
 
-## **Task 3**: Adding routes/endpoints
-For the tables in the database you are to create separate API group(s). In each API group you will have the following category of endpoint with the described funcitonality:
-- POST - add data to the corresponding database table, data has to be passed as a raw request in JSON.
-- GET - get all data from the corresponding database table
-- GET - get specific record based on the ID of the record, this ID has to be passed as a path parameter when requesting the route/endpoint.
-- DELETE - delete specific rercord for the correspinding database table, this ID has to be passed as a path parameter when requestion the route/endpoint.
-- PATCH - alter a specific record specified by ID in the corresponding database table, this ID has to be passed as a path parameter when requesting the route/endpoint.
+## Boilerplate Code
 
-## **Task 4:** Implementing Kafka consumer
-```Social service contains a file StreamManager.js file. This file outputs the consumed data.```
+### TodoList Service - Kafka Producer (producer.js)
+```javascript
+const { Kafka } = require('kafkajs');
 
-For this task a Kafka server has already been setup and utility classes have been provided in order to seamlessly connect and communicate with the topics. You are to use this provided code of a consumer in order to consume messages from the a specific topic (specified in Kafka utility code), parse them and insert the consumed messaged in appropriate database tables.
+const kafka = new Kafka({ clientId: 'todolist', brokers: ['localhost:9092'] });
+const producer = kafka.producer();
+
+const publishEvent = async (eventType, task) => {
+    await producer.connect();
+    await producer.send({
+        topic: 'task-events',
+        messages: [{ key: eventType, value: JSON.stringify(task) }],
+    });
+    await producer.disconnect();
+};
+
+module.exports = { publishEvent };
+```
+
+### TodoList Service - Main Application (app.js)
+```javascript
+const express = require('express');
+const { publishEvent } = require('./producer');
+
+const app = express();
+app.use(express.json());
+
+let tasks = [];
+
+app.post('/tasks', async (req, res) => {
+    const task = { id: tasks.length + 1, ...req.body };
+    tasks.push(task);
+    await publishEvent('task_created', task);
+    res.status(201).json(task);
+});
+
+app.put('/tasks/:id', async (req, res) => {
+    const id = parseInt(req.params.id);
+    const taskIndex = tasks.findIndex(t => t.id === id);
+    if (taskIndex === -1) return res.status(404).json({ message: 'Task not found' });
+
+    tasks[taskIndex] = { ...tasks[taskIndex], ...req.body };
+    await publishEvent('task_updated', tasks[taskIndex]);
+    res.json(tasks[taskIndex]);
+});
+
+app.delete('/tasks/:id', async (req, res) => {
+    const id = parseInt(req.params.id);
+    const taskIndex = tasks.findIndex(t => t.id === id);
+    if (taskIndex === -1) return res.status(404).json({ message: 'Task not found' });
+
+    const deletedTask = tasks.splice(taskIndex, 1)[0];
+    await publishEvent('task_deleted', deletedTask);
+    res.json(deletedTask);
+});
+
+const PORT = 3000;
+app.listen(PORT, () => console.log(`TodoList Service running on port ${PORT}`));
+```
+
+## Setup Instructions
+
+### 1. Prerequisites
+- Install **Docker & Docker Compose** (recommended for Kafka setup)
+- Install **Node.js**
+
+### 2. Start Kafka Using Docker
+```sh
+docker-compose up -d
+```
+
+### 3. Run TodoList Service
+```sh
+cd todolist-service
+npm install  
+npm start    
+```
+
+## Evaluation Criteria
+- Code quality & best practices.
+- Proper Kafka integration.
+- Well-structured & documented code.
+
+Happy coding!
+
