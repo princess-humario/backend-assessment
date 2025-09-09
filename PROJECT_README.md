@@ -186,7 +186,6 @@ CREATE TABLE notifications (
 ##  Submission by
 
 **Huma Tahir**  
-Backend Developer Assessment - Kafka Integration Project
 
 ---
 
