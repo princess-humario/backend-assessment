@@ -183,7 +183,7 @@ CREATE TABLE notifications (
 - **Health Checks**: Ensures services are ready before connections
 - **Auto Topic Creation**: Automatic topic creation for development ease
 
-##  Author
+##  Submission by
 
 **Huma Tahir**  
 Backend Developer Assessment - Kafka Integration Project
